@@ -105,7 +105,7 @@ def timezone_menu(lang: str) -> InlineKeyboardMarkup:
         InlineKeyboardButton(text=i18n.t(lang, "tz_other"), callback_data="set:tz_other")
     ])
     keys.append([
-        InlineKeyboardButton(text=i18n.t(lang, "back_menu"), callback_data="set:root")
+        InlineKeyboardButton(text=i18n.t(lang, "back"), callback_data="set:root")
     ])
     return InlineKeyboardMarkup(inline_keyboard=keys)
 
@@ -117,11 +117,19 @@ def language_menu(lang: str, current: str) -> InlineKeyboardMarkup:
         auto_label = "✅ " + auto_label
     keys.append([InlineKeyboardButton(text=auto_label, callback_data="set:lang_set:auto")])
     for code, name in i18n.LANGUAGES.items():
-        label = name if code != current else "✅ " + name
+        flag = i18n.FLAGS.get(code, "")
+        label = f"{name} {flag}" if code != current else f"✅ {name} {flag}"
         keys.append([
             InlineKeyboardButton(text=label, callback_data=f"set:lang_set:{code}")
         ])
     keys.append([
-        InlineKeyboardButton(text=i18n.t(lang, "back_menu"), callback_data="set:root")
+        InlineKeyboardButton(text=i18n.t(lang, "back"), callback_data="set:root")
     ])
     return InlineKeyboardMarkup(inline_keyboard=keys)
+
+
+def empty_reminders_kb(lang: str) -> InlineKeyboardMarkup:
+    """Shown when the reminders list is empty: a single 'back to main menu' button."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=i18n.t(lang, "back_menu"), callback_data="menu:root")],
+    ])

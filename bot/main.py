@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import datetime, timedelta, timezone
 
 from aiogram import Bot, Dispatcher, F, Router
@@ -106,9 +107,8 @@ async def _render_reminders(cb: CallbackQuery, page: int) -> None:
         reminders = await db.list_active_reminders(session, user.id)
 
     if not reminders:
-        await cb.message.edit_text(
-            i18n.t(lang, "no_reminders"), reply_markup=keyboards.main_menu(lang)
-        )
+        text = f"{i18n.t(lang, 'reminders_title')}\n\n{i18n.t(lang, 'no_reminders')}"
+        await cb.message.edit_text(text, reply_markup=keyboards.empty_reminders_kb(lang))
         await cb.answer()
         return
 
@@ -384,7 +384,7 @@ async def on_lang_set(cb: CallbackQuery, state: FSMContext) -> None:
         await session.commit()
         notif = user.notifications_enabled
     await cb.message.edit_text(
-        i18n.t(code, "lang_set", lang=i18n.LANGUAGES.get(code, code)),
+        i18n.t(code, "lang_set", name=i18n.LANGUAGES.get(code, code)),
         reply_markup=keyboards.settings_menu(code, notif),
     )
     await cb.answer()
@@ -554,7 +554,10 @@ async def on_text(message: Message, state: FSMContext) -> None:
     if parsed.intent == "list":
         now = datetime.now(timezone.utc)
         if not existing:
-            await message.answer(i18n.t(lang, "no_reminders"))
+            await message.answer(
+                f"{i18n.t(lang, 'reminders_title')}\n\n{i18n.t(lang, 'no_reminders')}",
+                reply_markup=keyboards.empty_reminders_kb(lang),
+            )
         else:
             lines = [fmt_reminder(r, lang, tz, now) for r in existing]
             await message.answer(
@@ -575,34 +578,50 @@ async def on_text(message: Message, state: FSMContext) -> None:
         )
         return
 
-    # Default: LLM's chat reply, plus a language-switch offer (spec §6).
+    # Default: LLM's chat reply, plus a visible language-switch offer (spec §6).
     reply = parsed.reply or i18n.t(lang, "menu")
-    kb = _language_offer_kb(detected_lang, user.language)
-    await message.answer(reply, reply_markup=kb)
+    offer = _language_offer(detected_lang, user.language)
+    if offer:
+        question, kb = offer
+        await message.answer(f"{reply}\n\n{question}", reply_markup=kb)
+    else:
+        await message.answer(reply)
 
 
-def _language_offer_kb(detected: str, current: str) -> InlineKeyboardMarkup | None:
+def _language_offer(detected: str, current: str) -> tuple[str, InlineKeyboardMarkup] | None:
     """If the user wrote in a language different from a manually-pinned UI
-    language, offer a one-tap switch. In 'auto' mode the bot already follows,
-    so no offer is needed."""
+    language, return a visible question + one-tap switch keyboard. In 'auto'
+    mode the bot already follows, so no offer is needed."""
     if current == "auto":
         return None
     if detected == current or detected not in i18n.SUPPORTED:
         return None
+
+    flag = i18n.FLAGS.get(detected, "")
+    name = i18n.LANGUAGES.get(detected, detected)
+    question = i18n.t(detected, "lang_offer", name=f"{flag} {name}")
+
     yes = InlineKeyboardButton(
-        text=i18n.t(detected, "lang_yes"),
+        text=f"{flag} {i18n.t(detected, 'lang_yes')}",
         callback_data=f"set:lang_set:{detected}",
     )
+    cur_flag = i18n.FLAGS.get(current, "")
     no = InlineKeyboardButton(
-        text=i18n.t(detected, "lang_no"), callback_data="menu:root"
+        text=f"{cur_flag} {i18n.t(detected, 'lang_no')}", callback_data="menu:root"
     )
-    return InlineKeyboardMarkup(inline_keyboard=[[yes, no]])
+    return question, InlineKeyboardMarkup(inline_keyboard=[[yes, no]])
 
 
 # --- app bootstrap ---------------------------------------------
 
 
+@router.errors()
+async def on_unhandled_error(event, exception) -> None:
+    logging.exception("Unhandled error in handler", exc_info=exception)
+
+
 async def main() -> None:
+    logging.basicConfig(level=logging.INFO)
     await db.init_db()
     bot = Bot(token=config.BOT_TOKEN)
     dp = Dispatcher(storage=MemoryStorage())
