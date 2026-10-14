@@ -6,6 +6,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 from aiogram import Bot, Dispatcher, F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -58,6 +59,18 @@ def _match_reminder(reminders: list[Reminder], ref: str) -> int | None:
     return None
 
 
+async def edit_or_send(cb: CallbackQuery, text: str, reply_markup=None) -> None:
+    """Edit the message in place; if Telegram rejects the edit ('message is not
+    modified', stale/deleted message, etc.), send a fresh message instead so the
+    button press never looks dead."""
+    try:
+        await cb.message.edit_text(text, reply_markup=reply_markup)
+    except TelegramBadRequest:
+        await cb.message.answer(text, reply_markup=reply_markup)
+    finally:
+        await cb.answer()
+
+
 # --- /start and /help ------------------------------------------
 
 
@@ -89,8 +102,7 @@ async def on_menu_root(cb: CallbackQuery) -> None:
     async with SessionFactory() as session:
         user = await db.get_user(session, cb.from_user.id)
         lang = db.effective_language(user)
-    await cb.message.edit_text(i18n.t(lang, "menu"), reply_markup=keyboards.main_menu(lang))
-    await cb.answer()
+    await edit_or_send(cb, i18n.t(lang, "menu"), keyboards.main_menu(lang))
 
 
 @router.callback_query(F.data == "menu:reminders")
@@ -108,8 +120,7 @@ async def _render_reminders(cb: CallbackQuery, page: int) -> None:
 
     if not reminders:
         text = f"{i18n.t(lang, 'reminders_title')}\n\n{i18n.t(lang, 'no_reminders')}"
-        await cb.message.edit_text(text, reply_markup=keyboards.empty_reminders_kb(lang))
-        await cb.answer()
+        await edit_or_send(cb, text, keyboards.empty_reminders_kb(lang))
         return
 
     now = datetime.now(timezone.utc)
@@ -130,8 +141,7 @@ async def _render_reminders(cb: CallbackQuery, page: int) -> None:
         lines.append(i18n.t(lang, "no_later"))
 
     kb, _ = keyboards.reminders_list(lang, reminders, page)
-    await cb.message.edit_text("\n".join(lines), reply_markup=kb)
-    await cb.answer()
+    await edit_or_send(cb, "\n".join(lines), kb)
 
 
 @router.callback_query(F.data.startswith("list:page:"))
@@ -616,8 +626,13 @@ def _language_offer(detected: str, current: str) -> tuple[str, InlineKeyboardMar
 
 
 @router.errors()
-async def on_unhandled_error(event, exception) -> None:
-    logging.exception("Unhandled error in handler", exc_info=exception)
+async def on_unhandled_error(event) -> None:
+    exc = getattr(event, "exception", None)
+    logging.error(
+        "Unhandled error while processing update: %s: %s",
+        type(exc).__name__, exc,
+        exc_info=exc,
+    )
 
 
 async def main() -> None:
