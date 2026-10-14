@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Env & secrets
+.env
+
+# Runtime data (SQLite DB)
+data/
+*.db
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# env / secrets
+.env
+*.env
+!.env.example
+
+# data (SQLite и volume)
+data/
+*.db
+*.sqlite3
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# logs
+*.log
+logs/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store

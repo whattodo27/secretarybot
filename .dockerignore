@@ -1,0 +1,17 @@
+# Build
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Env & secrets
+.env
+
+# Runtime data
+data/
+*.db
+
+# Git / docs not needed in image
+.git/
+README.md
+IDEA.md

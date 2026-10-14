@@ -1,0 +1,1 @@
+"""Personal-secretary Telegram bot package."""
