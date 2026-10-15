@@ -51,6 +51,9 @@ def to_utc(naive: datetime, tz_name: str) -> datetime:
 
 
 def to_local(utc_dt: datetime, tz_name: str) -> datetime:
+    """A UTC datetime (aware or naive) -> the user's local wall-clock time."""
+    if utc_dt.tzinfo is None:
+        utc_dt = utc_dt.replace(tzinfo=timezone.utc)
     return utc_dt.astimezone(ZoneInfo(tz_name))
 
 

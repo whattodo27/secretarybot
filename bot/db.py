@@ -7,15 +7,35 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import (Boolean, DateTime, ForeignKey, Integer, String, select, update)
+from sqlalchemy import (Boolean, DateTime, ForeignKey, Integer, String,
+                        TypeDecorator, select, update)
 from sqlalchemy.ext.asyncio import (AsyncSession, async_sessionmaker, create_async_engine)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from . import config
 
 
+class UTCDateTime(TypeDecorator):
+    """Naive-UTC datetime: convert aware input to UTC and strip tzinfo on write,
+    and guarantee naive UTC on read (matching what SQLite returns)."""
+    impl = DateTime
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        if value.tzinfo is not None:
+            value = value.astimezone(timezone.utc).replace(tzinfo=None)
+        return value
+
+    def process_result_value(self, value, dialect):
+        if value is not None and value.tzinfo is not None:
+            value = value.astimezone(timezone.utc).replace(tzinfo=None)
+        return value
+
+
 class Base(DeclarativeBase):
-    pass
+    type_annotation_map = {datetime: UTCDateTime()}
 
 
 class User(Base):
@@ -27,7 +47,7 @@ class User(Base):
     timezone: Mapped[str] = mapped_column(String(64), default=config.DEFAULT_TIMEZONE)
     notifications_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+        default=lambda: datetime.now(timezone.utc)
     )
 
 
@@ -37,15 +57,13 @@ class Reminder(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     text: Mapped[str] = mapped_column(String(512))
-    remind_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    remind_at: Mapped[datetime] = mapped_column(index=True)
     # none | daily | weekly | monthly
     recurrence: Mapped[str] = mapped_column(String(16), default="none")
     status: Mapped[str] = mapped_column(String(16), default="active")  # active | done
-    last_notified: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    last_notified: Mapped[datetime | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+        default=lambda: datetime.now(timezone.utc)
     )
 
 

@@ -39,9 +39,10 @@ class CreateFlow(StatesGroup):
 # --- formatting helpers ----------------------------------------
 
 
-def fmt_reminder(r: Reminder, lang: str, tz: str, now: datetime) -> str:
+def fmt_reminder(r: Reminder, lang: str, tz: str) -> str:
     local = timezones.to_local(r.remind_at, tz)
-    when = i18n.format_dt(local, lang, now)
+    now_local = timezones.now_local(tz)
+    when = i18n.format_dt(local, lang, now_local)
     rec = i18n.tr_recurrence(lang, r.recurrence)
     return f"• {r.text} — {when}{rec}"
 
@@ -123,20 +124,20 @@ async def _render_reminders(cb: CallbackQuery, page: int) -> None:
         await edit_or_send(cb, text, keyboards.empty_reminders_kb(lang))
         return
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)  # naive UTC, matches DB storage
     window = now + timedelta(hours=config.UPCOMING_WINDOW_H)
     upcoming = [r for r in reminders if r.remind_at <= window]
     later = [r for r in reminders if r.remind_at > window]
 
     lines = [i18n.t(lang, "reminders_title"), "", i18n.t(lang, "upcoming")]
     if upcoming:
-        lines += [fmt_reminder(r, lang, tz, now) for r in upcoming]
+        lines += [fmt_reminder(r, lang, tz) for r in upcoming]
     else:
         lines.append(i18n.t(lang, "no_upcoming"))
 
     lines += ["", i18n.t(lang, "later")]
     if later:
-        lines += [fmt_reminder(r, lang, tz, now) for r in later]
+        lines += [fmt_reminder(r, lang, tz) for r in later]
     else:
         lines.append(i18n.t(lang, "no_later"))
 
@@ -170,7 +171,7 @@ async def on_rem_view(cb: CallbackQuery, state: FSMContext) -> None:
         if r is None or r.user_id != user.id:
             await cb.answer()
             return
-        detail = fmt_reminder(r, lang, tz, datetime.now(timezone.utc))
+        detail = fmt_reminder(r, lang, tz)
     await cb.message.edit_text(
         detail, reply_markup=keyboards.reminder_detail(lang, rid)
     )
@@ -562,14 +563,13 @@ async def on_text(message: Message, state: FSMContext) -> None:
 
     # List intent.
     if parsed.intent == "list":
-        now = datetime.now(timezone.utc)
         if not existing:
             await message.answer(
                 f"{i18n.t(lang, 'reminders_title')}\n\n{i18n.t(lang, 'no_reminders')}",
                 reply_markup=keyboards.empty_reminders_kb(lang),
             )
         else:
-            lines = [fmt_reminder(r, lang, tz, now) for r in existing]
+            lines = [fmt_reminder(r, lang, tz) for r in existing]
             await message.answer(
                 "\n".join(lines), reply_markup=keyboards.main_menu(lang)
             )
